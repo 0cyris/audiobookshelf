@@ -210,6 +210,9 @@ export default {
       sidebarOpen: false,
       sidebarTab: 'outline',
       outlineItems: [],
+      selectedOutlineId: null,
+      // Scroll offset within the current page, used to pick the active outline entry
+      currentPageOffset: 0,
       searchQuery: '',
       searchResults: [],
       searchProgress: 0,
@@ -272,12 +275,40 @@ export default {
     outlineHasChildren() {
       return this.outlineItems.some((item) => item.children.length)
     },
+    /**
+     * Which outline entry to highlight. An entry the user actually clicked wins
+     * until the reader moves off its page. Otherwise fall back to the entry the
+     * current scroll position sits in - several entries commonly start on the
+     * same page, so their offset down the page breaks the tie rather than just
+     * taking the last one.
+     */
     activeOutlineId() {
-      let activeId = null
-      for (const item of this.outlineItems) {
-        if (item.page && item.page <= this.page) activeId = item.id
+      if (this.selectedOutlineId !== null) {
+        const selected = this.outlineItems.find((item) => item.id === this.selectedOutlineId)
+        if (selected && selected.page === this.page) return selected.id
       }
-      return activeId
+
+      let currentPageNum = 0
+      for (const item of this.outlineItems) {
+        if (item.page && item.page <= this.page && item.page > currentPageNum) currentPageNum = item.page
+      }
+      if (!currentPageNum) return null
+
+      const candidates = this.outlineItems.filter((item) => item.page === currentPageNum)
+      if (candidates.length === 1) return candidates[0].id
+      // Reading past the page they all start on means the last one is in effect
+      if (currentPageNum < this.page) return candidates[candidates.length - 1].id
+
+      // Treat an entry as reached once its heading is at or above the top of the
+      // viewport, with a little slack so it counts as you scroll it into view
+      const slack = Math.max(40, this.containerHeight * 0.25)
+      let active = candidates[0]
+      for (const item of candidates) {
+        if (item.y == null) continue
+        const offsetFromPageTop = Math.max(0, (this.sizeForPage(item.page).height - item.y) * this.scale)
+        if (offsetFromPageTop <= this.currentPageOffset + slack) active = item
+      }
+      return active.id
     },
     canGoNext() {
       return this.page < this.numPages
@@ -544,15 +575,20 @@ export default {
       })
     },
     updateCurrentPageFromScroll() {
-      if (this.renderMode === 'single' || !this.rows.length) return
       const viewer = this.$refs.viewer
       if (!viewer) return
+      if (this.renderMode === 'single') {
+        this.currentPageOffset = viewer.scrollTop
+        return
+      }
+      if (!this.rows.length) return
       const midpoint = viewer.scrollTop + viewer.clientHeight / 2
       let current = this.rows[0]
       for (const row of this.rows) {
         if (row.top <= midpoint) current = row
         else break
       }
+      this.currentPageOffset = Math.max(0, viewer.scrollTop - current.top)
       const pageNum = current.pages[0]
       if (pageNum !== this.page) this.page = pageNum
     },
@@ -564,10 +600,15 @@ export default {
     goToPage(pageNum, yFromPageBottom = null, align = 'top') {
       const clamped = Math.max(1, Math.min(this.numPages, Math.round(Number(pageNum) || 1)))
       this.page = clamped
+      // Any navigation that is not an outline click drops the pinned entry
+      this.selectedOutlineId = null
+      this.currentPageOffset = this.offsetWithinPage(clamped, yFromPageBottom)
       if (this.renderMode === 'single') {
         this.$nextTick(() => {
           const viewer = this.$refs.viewer
-          if (viewer) viewer.scrollTop = align === 'bottom' ? Math.max(0, viewer.scrollHeight - viewer.clientHeight) : 0
+          if (!viewer) return
+          viewer.scrollTop = align === 'bottom' ? Math.max(0, viewer.scrollHeight - viewer.clientHeight) : 0
+          this.currentPageOffset = viewer.scrollTop
           this.renderVisiblePages()
         })
         return
@@ -575,17 +616,19 @@ export default {
       this.scrollToPage(clamped, yFromPageBottom)
       this.renderVisiblePages()
     },
+    /** Pixels from the top of a page for a destination measured from its bottom */
+    offsetWithinPage(pageNum, yFromPageBottom) {
+      if (yFromPageBottom == null) return 0
+      return Math.max(0, (this.sizeForPage(pageNum).height - yFromPageBottom) * this.scale - PAGE_GAP)
+    },
     scrollToPage(pageNum, yFromPageBottom = null) {
       const viewer = this.$refs.viewer
       const layout = this.pageLayouts.find((l) => l.page === pageNum)
       if (!viewer || !layout) return
-      let offset = layout.top - PAGE_GAP
-      if (yFromPageBottom != null) {
-        const size = this.sizeForPage(pageNum)
-        // PDF destinations measure y from the bottom of the page
-        offset += Math.max(0, (size.height - yFromPageBottom) * this.scale - PAGE_GAP)
-      }
-      viewer.scrollTop = Math.max(0, offset)
+      // PDF destinations measure y from the bottom of the page
+      const within = this.offsetWithinPage(pageNum, yFromPageBottom)
+      viewer.scrollTop = Math.max(0, layout.top - PAGE_GAP + within)
+      this.currentPageOffset = within
     },
     next() {
       if (this.page >= this.numPages) return
@@ -993,13 +1036,15 @@ export default {
         item.visible = expanded || item.depth === 0
       }
     },
-    clickOutlineItem(item) {
+    async clickOutlineItem(item) {
       if (item.url) {
         window.open(item.url, '_blank', 'noopener,noreferrer')
         return
       }
       if (item.page) this.goToPage(item.page, item.y)
-      else this.goToDest(item.dest)
+      else await this.goToDest(item.dest)
+      // goToPage cleared this, so pin the entry the user actually clicked
+      this.selectedOutlineId = item.id
       this.closeSidebarOnMobile()
     },
     clickThumbnail(pageNum) {

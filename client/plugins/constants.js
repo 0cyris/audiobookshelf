@@ -1,6 +1,6 @@
 const SupportedFileTypes = {
   image: ['png', 'jpg', 'jpeg', 'webp'],
-  audio: ['m4b', 'mp3', 'm4a', 'flac', 'opus', 'ogg', 'oga', 'mp4', 'aac', 'wma', 'aiff', 'aif','wav', 'webm', 'webma', 'mka', 'awb', 'caf', 'mpeg', 'mpg'],
+  audio: ['m4b', 'mp3', 'm4a', 'flac', 'opus', 'ogg', 'oga', 'mp4', 'aac', 'wma', 'aiff', 'aif', 'wav', 'webm', 'webma', 'mka', 'awb', 'caf', 'mpeg', 'mpg'],
   ebook: ['epub', 'pdf', 'mobi', 'azw3', 'cbr', 'cbz'],
   info: ['nfo'],
   text: ['txt'],
@@ -49,6 +49,10 @@ const Constants = {
 const KeyNames = {
   27: 'Escape',
   32: 'Space',
+  33: 'PageUp',
+  34: 'PageDown',
+  35: 'End',
+  36: 'Home',
   37: 'ArrowLeft',
   38: 'ArrowUp',
   39: 'ArrowRight',
@@ -72,6 +76,12 @@ const Hotkeys = {
   EReader: {
     NEXT_PAGE: 'ArrowRight',
     PREV_PAGE: 'ArrowLeft',
+    PAGE_DOWN: 'PageDown',
+    PAGE_UP: 'PageUp',
+    SCROLL_DOWN: 'ArrowDown',
+    SCROLL_UP: 'ArrowUp',
+    FIRST_PAGE: 'Home',
+    LAST_PAGE: 'End',
     CLOSE: 'Escape'
   },
   Modal: {

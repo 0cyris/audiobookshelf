@@ -30,9 +30,13 @@
       </div>
 
       <!-- Outline -->
-      <div v-show="sidebarTab === 'outline'" class="flex-1 overflow-y-auto px-2 py-2">
+      <div v-show="sidebarTab === 'outline'" class="flex-1 flex flex-col min-h-0 px-2 py-2">
         <p v-if="!outlineItems.length" class="text-sm text-gray-300 text-center py-4">{{ $strings.MessagePdfNoOutline }}</p>
-        <ul v-else>
+        <div v-else-if="outlineHasChildren" class="flex items-center justify-end h-8 shrink-0">
+          <ui-icon-btn icon="unfold_more" :size="7" borderless :aria-label="$strings.ButtonExpandAll" @click="setAllOutlineExpanded(true)" />
+          <ui-icon-btn icon="unfold_less" :size="7" borderless :aria-label="$strings.ButtonCollapseAll" @click="setAllOutlineExpanded(false)" />
+        </div>
+        <ul v-if="outlineItems.length" class="flex-1 overflow-y-auto">
           <li v-for="item in visibleOutlineItems" :key="item.id">
             <div class="flex items-center rounded-md relative" :class="{ 'bg-yellow-400/20': item.id === activeOutlineId }" :style="{ paddingLeft: item.depth * 12 + 'px' }">
               <div v-if="item.id === activeOutlineId" class="w-0.5 h-full absolute top-0 left-0 bg-yellow-400" />
@@ -264,6 +268,9 @@ export default {
     },
     visibleOutlineItems() {
       return this.outlineItems.filter((item) => item.visible)
+    },
+    outlineHasChildren() {
+      return this.outlineItems.some((item) => item.children.length)
     },
     activeOutlineId() {
       let activeId = null
@@ -978,6 +985,13 @@ export default {
         }
       }
       setVisible(item.children, item.expanded)
+    },
+    setAllOutlineExpanded(expanded) {
+      for (const item of this.outlineItems) {
+        item.expanded = expanded
+        // Collapsing everything leaves the top level showing
+        item.visible = expanded || item.depth === 0
+      }
     },
     clickOutlineItem(item) {
       if (item.url) {

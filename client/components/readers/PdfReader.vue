@@ -115,6 +115,8 @@ const RENDER_BUFFER_ROWS = 1
 const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6]
 const THUMBNAIL_WIDTH = 130
 const SEARCH_PAGES_PER_TICK = 8
+// Accumulated wheel distance needed to turn the page in single page mode
+const WHEEL_FLIP_THRESHOLD = 60
 const EXCERPT_PADDING = 45
 
 const LIGATURES = {
@@ -547,12 +549,18 @@ export default {
       const pageNum = current.pages[0]
       if (pageNum !== this.page) this.page = pageNum
     },
-    goToPage(pageNum, yFromPageBottom = null) {
+    /**
+     * @param {number} pageNum
+     * @param {number} [yFromPageBottom] destination offset, measured from the page bottom
+     * @param {'top'|'bottom'} [align] where to land inside the page in single page mode
+     */
+    goToPage(pageNum, yFromPageBottom = null, align = 'top') {
       const clamped = Math.max(1, Math.min(this.numPages, Math.round(Number(pageNum) || 1)))
       this.page = clamped
       if (this.renderMode === 'single') {
         this.$nextTick(() => {
-          if (this.$refs.viewer) this.$refs.viewer.scrollTop = 0
+          const viewer = this.$refs.viewer
+          if (viewer) viewer.scrollTop = align === 'bottom' ? Math.max(0, viewer.scrollHeight - viewer.clientHeight) : 0
           this.renderVisiblePages()
         })
         return
@@ -593,25 +601,46 @@ export default {
       this.scrollByViewport(-1)
     },
     scrollDown() {
-      this.scrollBy(120)
+      if (this.renderMode === 'single') this.panOrFlip(1, 120)
+      else this.scrollBy(120)
     },
     scrollUp() {
-      this.scrollBy(-120)
+      if (this.renderMode === 'single') this.panOrFlip(-1, 120)
+      else this.scrollBy(-120)
     },
     scrollByViewport(direction) {
-      if (this.renderMode === 'single') {
-        if (direction > 0) this.next()
-        else this.prev()
-        return
-      }
       const viewer = this.$refs.viewer
       if (!viewer) return
-      this.scrollBy(direction * (viewer.clientHeight - 40))
+      const amount = viewer.clientHeight - 40
+      if (this.renderMode === 'single') this.panOrFlip(direction, amount)
+      else this.scrollBy(direction * amount)
     },
     scrollBy(amount) {
       const viewer = this.$refs.viewer
-      if (!viewer || this.renderMode === 'single') return
+      if (!viewer) return
       viewer.scrollTop += amount
+    },
+    /**
+     * Single page mode has nothing to scroll once the page fits the viewport, so
+     * pan within a zoomed page while there is room and flip pages at the edges.
+     */
+    panOrFlip(direction, amount) {
+      const viewer = this.$refs.viewer
+      if (!viewer) return
+      const maxScroll = viewer.scrollHeight - viewer.clientHeight
+      if (maxScroll > 1) {
+        const atEdge = direction > 0 ? viewer.scrollTop >= maxScroll - 1 : viewer.scrollTop <= 0
+        if (!atEdge) {
+          viewer.scrollTop = Math.max(0, Math.min(maxScroll, viewer.scrollTop + direction * amount))
+          return
+        }
+      }
+      if (direction > 0) {
+        if (this.canGoNext) this.goToPage(this.page + 1)
+      } else if (this.canGoPrev) {
+        // Continue reading from the bottom of the previous page
+        this.goToPage(this.page - 1, null, 'bottom')
+      }
     },
     commitPageInput() {
       const parsed = parseInt(this.pageInput, 10)
@@ -1219,6 +1248,49 @@ export default {
         this.stepMatch(e.shiftKey ? -1 : 1)
       }
     },
+    /** Wheel deltas come in pixels, lines or pages depending on the device */
+    normalizeWheelDelta(e) {
+      if (e.deltaMode === 1) return e.deltaY * 16
+      if (e.deltaMode === 2) return e.deltaY * (this.$refs.viewer?.clientHeight || 600)
+      return e.deltaY
+    },
+    /**
+     * Only needed in single page mode: the container is exactly one page tall, so
+     * unless the page is zoomed past the viewport there is nothing for the browser
+     * to scroll and the wheel would do nothing at all.
+     */
+    onWheel(e) {
+      if (this.renderMode !== 'single') return
+      const viewer = this.$refs.viewer
+      if (!viewer) return
+      const delta = this.normalizeWheelDelta(e)
+      if (!delta) return
+
+      const maxScroll = viewer.scrollHeight - viewer.clientHeight
+      const atEdge = delta > 0 ? viewer.scrollTop >= maxScroll - 1 : viewer.scrollTop <= 0
+      // Let the browser pan a zoomed page until it reaches the edge
+      if (maxScroll > 1 && !atEdge) return
+
+      e.preventDefault()
+      if (this.wheelCooldown) return
+
+      this.wheelAccumulator += delta
+      clearTimeout(this.wheelResetTimeout)
+      this.wheelResetTimeout = setTimeout(() => {
+        this.wheelAccumulator = 0
+      }, 400)
+      if (Math.abs(this.wheelAccumulator) < WHEEL_FLIP_THRESHOLD) return
+
+      const direction = this.wheelAccumulator > 0 ? 1 : -1
+      this.wheelAccumulator = 0
+      // Trackpad inertia keeps firing after the flick, which would skip pages
+      this.wheelCooldown = true
+      clearTimeout(this.wheelCooldownTimeout)
+      this.wheelCooldownTimeout = setTimeout(() => {
+        this.wheelCooldown = false
+      }, 350)
+      this.panOrFlip(direction, 0)
+    },
     onTouchStart(e) {
       if (e.touches.length !== 2) return
       this.pinchStartDistance = this.touchDistance(e.touches)
@@ -1272,10 +1344,13 @@ export default {
     this.destroyed = false
     this.pinchStartDistance = 0
     this.pinchStartScale = 1
+    this.wheelAccumulator = 0
+    this.wheelCooldown = false
   },
   mounted() {
     window.addEventListener('keydown', this.onKeyDown)
     const viewer = this.$refs.viewer
+    viewer.addEventListener('wheel', this.onWheel, { passive: false })
     viewer.addEventListener('touchstart', this.onTouchStart, { passive: true })
     viewer.addEventListener('touchmove', this.onTouchMove, { passive: false })
     viewer.addEventListener('touchend', this.onTouchEnd, { passive: true })
@@ -1290,6 +1365,7 @@ export default {
     window.removeEventListener('keydown', this.onKeyDown)
     const viewer = this.$refs.viewer
     if (viewer) {
+      viewer.removeEventListener('wheel', this.onWheel)
       viewer.removeEventListener('touchstart', this.onTouchStart)
       viewer.removeEventListener('touchmove', this.onTouchMove)
       viewer.removeEventListener('touchend', this.onTouchEnd)
@@ -1300,6 +1376,8 @@ export default {
     if (this.pinchRaf) cancelAnimationFrame(this.pinchRaf)
     clearTimeout(this.progressTimeout)
     clearTimeout(this.resizeTimeout)
+    clearTimeout(this.wheelResetTimeout)
+    clearTimeout(this.wheelCooldownTimeout)
     this.destroyDocument()
   }
 }

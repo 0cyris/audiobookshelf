@@ -1,0 +1,42 @@
+name: Sync master from upstream
+
+on:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch upstream
+        run: git remote add upstream https://github.com/advplyr/audiobookshelf.git && git fetch upstream master
+
+      - name: Fast-forward master to upstream, or fail loudly
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git merge-base --is-ancestor HEAD upstream/master; then
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse upstream/master)" ]; then
+              echo "Already up to date with upstream/master"
+              exit 0
+            fi
+            git merge --ff-only upstream/master
+            git push origin master
+            echo "Fast-forwarded master to $(git rev-parse upstream/master)"
+          else
+            echo "::error::master has diverged from upstream/master and cannot be fast-forwarded. Merge upstream/master in manually."
+            exit 1
+          fi

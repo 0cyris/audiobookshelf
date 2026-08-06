@@ -113,7 +113,11 @@ module.exports = {
   },
 
   // Build Configuration: https://go.nuxtjs.dev/config-build
-  build: {},
+  build: {
+    // pdf.js ships optional chaining even in its legacy build, which webpack 4
+    // cannot parse on its own
+    transpile: [/pdfjs-dist/]
+  },
   watchers: {
     webpack: {
       aggregateTimeout: 300,

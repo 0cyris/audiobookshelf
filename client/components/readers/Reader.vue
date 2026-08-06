@@ -79,42 +79,64 @@
         </div>
       </template>
       <div class="px-2 py-4 md:p-8 w-full text-base rounded-lg bg-bg shadow-lg border border-black-300 relative overflow-x-hidden overflow-y-auto" style="max-height: 80vh">
-        <div class="flex items-center mb-4">
-          <div class="w-40">
-            <p class="text-lg">{{ $strings.LabelTheme }}:</p>
+        <template v-if="isPdf">
+          <div class="flex items-center mb-4">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelPdfRenderMode }}:</p>
+            </div>
+            <ui-toggle-btns v-model="ereaderSettings.pdfRenderMode" :items="pdfRenderModeItems" @input="settingsUpdated" />
           </div>
-          <ui-toggle-btns v-model="ereaderSettings.theme" :items="themeItems.theme" @input="settingsUpdated" />
-        </div>
-        <div class="flex items-center mb-4">
-          <div class="w-40">
-            <p class="text-lg">{{ $strings.LabelFontFamily }}:</p>
+          <div class="flex items-center mb-4">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelPdfZoom }}:</p>
+            </div>
+            <ui-toggle-btns v-model="ereaderSettings.pdfZoomMode" :items="pdfZoomModeItems" @input="settingsUpdated" />
           </div>
-          <ui-toggle-btns v-model="ereaderSettings.font" :items="themeItems.font" @input="settingsUpdated" />
-        </div>
-        <div class="flex items-center mb-4">
-          <div class="w-40">
-            <p class="text-lg">{{ $strings.LabelFontScale }}:</p>
+          <div class="flex items-center">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelPdfInvertColors }}:</p>
+            </div>
+            <ui-toggle-switch v-model="ereaderSettings.pdfInvert" :label="$strings.LabelPdfInvertColors" @input="settingsUpdated" />
           </div>
-          <ui-range-input v-model="ereaderSettings.fontScale" :min="5" :max="300" :step="5" @input="settingsUpdated" />
-        </div>
-        <div class="flex items-center mb-4">
-          <div class="w-40">
-            <p class="text-lg">{{ $strings.LabelLineSpacing }}:</p>
+        </template>
+        <template v-else>
+          <div class="flex items-center mb-4">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelTheme }}:</p>
+            </div>
+            <ui-toggle-btns v-model="ereaderSettings.theme" :items="themeItems.theme" @input="settingsUpdated" />
           </div>
-          <ui-range-input v-model="ereaderSettings.lineSpacing" :min="100" :max="300" :step="5" @input="settingsUpdated" />
-        </div>
-        <div class="flex items-center mb-4">
-          <div class="w-40">
-            <p class="text-lg">{{ $strings.LabelFontBoldness }}:</p>
+          <div class="flex items-center mb-4">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelFontFamily }}:</p>
+            </div>
+            <ui-toggle-btns v-model="ereaderSettings.font" :items="themeItems.font" @input="settingsUpdated" />
           </div>
-          <ui-range-input v-model="ereaderSettings.textStroke" :min="0" :max="300" :step="5" @input="settingsUpdated" />
-        </div>
-        <div class="flex items-center">
-          <div class="w-40">
-            <p class="text-lg">{{ $strings.LabelLayout }}:</p>
+          <div class="flex items-center mb-4">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelFontScale }}:</p>
+            </div>
+            <ui-range-input v-model="ereaderSettings.fontScale" :min="5" :max="300" :step="5" @input="settingsUpdated" />
           </div>
-          <ui-toggle-btns v-model="ereaderSettings.spread" :items="spreadItems" @input="settingsUpdated" />
-        </div>
+          <div class="flex items-center mb-4">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelLineSpacing }}:</p>
+            </div>
+            <ui-range-input v-model="ereaderSettings.lineSpacing" :min="100" :max="300" :step="5" @input="settingsUpdated" />
+          </div>
+          <div class="flex items-center mb-4">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelFontBoldness }}:</p>
+            </div>
+            <ui-range-input v-model="ereaderSettings.textStroke" :min="0" :max="300" :step="5" @input="settingsUpdated" />
+          </div>
+          <div class="flex items-center">
+            <div class="w-40">
+              <p class="text-lg">{{ $strings.LabelLayout }}:</p>
+            </div>
+            <ui-toggle-btns v-model="ereaderSettings.spread" :items="spreadItems" @input="settingsUpdated" />
+          </div>
+        </template>
       </div>
     </modals-modal>
   </div>
@@ -143,7 +165,10 @@ export default {
         lineSpacing: 115,
         fontBoldness: 100,
         spread: 'auto',
-        textStroke: 0
+        textStroke: 0,
+        pdfRenderMode: 'scroll',
+        pdfZoomMode: 'width',
+        pdfInvert: false
       }
     }
   },
@@ -166,6 +191,38 @@ export default {
     ereaderTheme() {
       if (this.isEpub) return this.ereaderSettings.theme
       return 'dark'
+    },
+    pdfRenderModeItems() {
+      return [
+        {
+          text: this.$strings.LabelPdfRenderModeScroll,
+          value: 'scroll'
+        },
+        {
+          text: this.$strings.LabelLayoutSinglePage,
+          value: 'single'
+        },
+        {
+          text: this.$strings.LabelPdfRenderModeSpread,
+          value: 'spread'
+        }
+      ]
+    },
+    pdfZoomModeItems() {
+      return [
+        {
+          text: this.$strings.LabelPdfFitWidth,
+          value: 'width'
+        },
+        {
+          text: this.$strings.LabelPdfFitPage,
+          value: 'page'
+        },
+        {
+          text: this.$strings.LabelPdfZoomActualSize,
+          value: 'actual'
+        }
+      ]
     },
     spreadItems() {
       return [
@@ -218,7 +275,7 @@ export default {
       return this.$store.state.streamLibraryItem
     },
     hasSettings() {
-      return this.isEpub
+      return this.isEpub || this.isPdf
     },
     abTitle() {
       return this.mediaMetadata.title
@@ -291,7 +348,7 @@ export default {
       this.$refs.readerComponent.goToChapter(uri)
     },
     readerMounted() {
-      if (this.isEpub) {
+      if (this.isEpub || this.isPdf) {
         this.loadEreaderSettings()
       }
     },
@@ -307,7 +364,8 @@ export default {
       this.showSettings = true
     },
     hotkey(action) {
-      if (!this.$refs.readerComponent) return
+      const reader = this.$refs.readerComponent
+      if (!reader) return
 
       if (action === this.$hotkeys.EReader.NEXT_PAGE) {
         this.next()
@@ -315,6 +373,27 @@ export default {
         this.prev()
       } else if (action === this.$hotkeys.EReader.CLOSE) {
         this.close()
+      } else if (action === this.$hotkeys.EReader.PAGE_DOWN) {
+        reader.pageDown?.()
+      } else if (action === this.$hotkeys.EReader.PAGE_UP) {
+        reader.pageUp?.()
+      } else if (action === this.$hotkeys.EReader.SCROLL_DOWN) {
+        // Readers that cannot scroll leave the up/down arrows to the audio player
+        if (reader.scrollDown) reader.scrollDown()
+        else this.forwardToPlayer(action)
+      } else if (action === this.$hotkeys.EReader.SCROLL_UP) {
+        if (reader.scrollUp) reader.scrollUp()
+        else this.forwardToPlayer(action)
+      } else if (action === this.$hotkeys.EReader.FIRST_PAGE) {
+        reader.firstPage?.()
+      } else if (action === this.$hotkeys.EReader.LAST_PAGE) {
+        reader.lastPage?.()
+      }
+    },
+    forwardToPlayer(action) {
+      if (!this.streamLibraryItem) return
+      if (Object.values(this.$hotkeys.AudioPlayer).includes(action)) {
+        this.$eventBus.$emit('player-hotkey', action)
       }
     },
     async searchBook() {

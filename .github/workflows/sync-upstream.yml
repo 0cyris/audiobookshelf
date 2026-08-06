@@ -1,4 +1,4 @@
-name: Sync master from upstream
+name: Sync master with upstream
 
 on:
   schedule:
@@ -23,20 +23,23 @@ jobs:
       - name: Fetch upstream
         run: git remote add upstream https://github.com/advplyr/audiobookshelf.git && git fetch upstream master
 
-      - name: Fast-forward master to upstream, or fail loudly
+      - name: Merge upstream/master, or fail loudly on conflict
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git merge-base --is-ancestor HEAD upstream/master; then
-            if [ "$(git rev-parse HEAD)" = "$(git rev-parse upstream/master)" ]; then
-              echo "Already up to date with upstream/master"
-              exit 0
-            fi
-            git merge --ff-only upstream/master
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "Already up to date with upstream/master"
+            exit 0
+          fi
+
+          # master carries fork-specific commits (CI, the PDF reader rewrite), so
+          # this is a real merge, not a fast-forward
+          if git merge --no-ff -m "Merge upstream/master into master" upstream/master; then
             git push origin master
-            echo "Fast-forwarded master to $(git rev-parse upstream/master)"
+            echo "Merged upstream/master ($(git rev-parse upstream/master)) into master"
           else
-            echo "::error::master has diverged from upstream/master and cannot be fast-forwarded. Merge upstream/master in manually."
+            git merge --abort
+            echo "::error::Merging upstream/master produced conflicts. Merge it in manually: git fetch upstream master && git merge upstream/master"
             exit 1
           fi

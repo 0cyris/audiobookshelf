@@ -33,11 +33,17 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
+      - name: Set image name
+        id: image
+        run: echo "name=ghcr.io/${OWNER,,}/audiobookshelf" >> "$GITHUB_OUTPUT"
+        env:
+          OWNER: ${{ github.repository_owner }}
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/audiobookshelf
+          images: ${{ steps.image.outputs.name }}
           tags: |
             type=edge,branch=master
             type=semver,pattern={{version}}
@@ -66,7 +72,10 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          tags: ${{ github.event.inputs.tags || steps.meta.outputs.tags }}
+          # A manual tag input is just a bare tag (e.g. "latest"), not a full
+          # reference, so it must still be qualified with the ghcr image name -
+          # otherwise Docker resolves it against docker.io instead
+          tags: ${{ github.event.inputs.tags && format('{0}:{1}', steps.image.outputs.name, github.event.inputs.tags) || steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           context: .
           platforms: linux/amd64,linux/arm64
